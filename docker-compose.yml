@@ -1,7 +1,7 @@
 # Vane：AI 搜索，内置 SearXNG。模型经核心的模型网关。
 #
 # Vane 的配置是一份 data/config.json，应用启动时还会改写它。模型网关的地址和凭据在每次创建容器时都要跟着
-# 注入值走，所以由一次性服务在应用启动前写进数据目录，只补自己的两项（模型和本地 embedding），不动主人加的
+# 注入值走，所以由一次性服务在应用启动前写进数据目录，只补自己的两项（模型和本地 embedding），不动用户加的
 # 其他 provider；配置写坏了、解析不了时安装失败，不静默覆盖。
 services:
   seed-config:
@@ -75,36 +75,29 @@ configs:
 x-wonton:
   spec: "0.4"
   id: com.github.itzcrazykns.vane
-  version: 0.1.0
+  version: 0.1.1
   kind: app
-  title: { zh: Vane, en: Vane }
-  description: { zh: "先搜网页、再由模型总结并标注出处的 AI 搜索", en: "AI search that reads the web first, then answers with cited sources" }
+  title: { en: Vane }
+  description: { zh: 先搜网页再回答，并标出处的 AI 搜索, en: AI search that reads the web first and cites its sources }
   icon: icon.png
   notices: [NOTICE]
-  category: ai
   screenshots: [screenshots/01-home.png, screenshots/02-searching.png, screenshots/03-answer.png, screenshots/04-answer-end.png, screenshots/05-library.png]
   author: { name: geraldpeng6, url: https://github.com/geraldpeng6 }
   homepage: https://github.com/ItzCrazyKns/Vane
   license: MIT
-  tags: [ai, search, web-search, "搜索", "问答", "引用"]
+  tags:
+    zh: [AI, 搜索]
+    en: [AI, Search]
   about:
     zh: |
-      Vane 是一个 AI 搜索和问答引擎：先在内置的 SearXNG 上搜网页，再由模型阅读结果、写出带出处的答案。
+      先搜网页，再让 AI 读结果、写出带出处的回答。
 
-      问题可以只搜网页、学术论文或社区讨论，也可以附上文档提问。搜索历史留在本机。
-
-      模型经云吞的模型网关，模型凭据由核心注入，不用自己填 key。相似度排序使用本地多语种 embedding 模型；首次启动需联网下载，加载失败会明确报错并停止启动。搜索中 embedding 出错时本次搜索直接失败并显示原因，不会静默跳过排序。
+      可以只搜网页、论文或社区讨论，也可以带着文档提问。搜索历史留在这台机器上。
     en: |
-      Vane is an AI search and answering engine: it searches the web through the bundled SearXNG, then has a model
-      read the results and write an answer with sources.
+      It searches the web first, then has the AI read the results and write an answer with sources.
 
-      A question can search the web, academic papers or discussions, and you can attach documents to it. Search
-      history stays on the machine.
-
-      Models go through Wonton's model gateway with the credential injected by the core, so no key has to be
-      entered. Ranking uses a local multilingual embedding model downloaded on first startup. If the model
-      cannot load, startup stops with an explicit error. If the embedding fails during a search, that search fails with the reason instead of silently skipping ranking.
-  release_notes: { zh: 第一版。, en: First release. }
+      Search the web, papers or discussions only, or attach a document to the question. Search history stays on this machine.
+  release_notes: { zh: 名字和说明更新。, en: Product name and description update. }
   webui:
     service: vane
     port: 3000
@@ -115,12 +108,15 @@ x-wonton:
         X-Wonton-User: "{user}"
   permissions:
     # 模型只走模型网关。
+    # Models go through the model gateway only.
     - models
     # SearXNG 要访问外部的搜索引擎，本地 embedding 模型从 Hugging Face 下载。
+    # SearXNG queries external search engines and the local embedding model comes from Hugging Face.
     - network.egress
   secrets:
     searxng_secret:
       generate: { bytes: 32 }
+  # 上游没写最低内存；本机空闲实测约 338M，取 512M。镜像支持 amd64 和 arm64（docker manifest inspect）。
   requirements:
     arch: [amd64, arm64]
-    memory: 2G
+    memory: 512M
