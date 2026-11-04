@@ -1,0 +1,126 @@
+# Vane：AI 搜索，内置 SearXNG。模型经核心的模型网关。
+#
+# Vane 的配置是一份 data/config.json，应用启动时还会改写它。模型网关的地址和凭据在每次创建容器时都要跟着
+# 注入值走，所以由一次性服务在应用启动前写进数据目录，只补自己的两项（模型和本地 embedding），不动主人加的
+# 其他 provider；配置写坏了、解析不了时安装失败，不静默覆盖。
+services:
+  seed-config:
+    # 镜像按摘要固定（这里是多架构清单列表的摘要），标签写上游的版本。
+    image: itzcrazykns1337/vane:v1.12.2@sha256:61f2bbf3386ff3df08911fb3de0e1893b04702a4d49ef13fbadbda937b47ab7c
+    # 镜像里没有别的 JS 运行时依赖，直接用 node 跑包里的脚本。
+    entrypoint: ["node", "/seed/seed-config.js"]
+    environment:
+      WONTON_MODEL_BASE_URL: ${WONTON_MODEL_BASE_URL}
+      WONTON_MODEL_API_KEY: ${WONTON_MODEL_API_KEY}
+      WONTON_MODEL_DEFAULT: ${WONTON_MODEL_DEFAULT}
+    volumes:
+      # 应用把配置和数据库写在 DATA_DIR（/home/vane/data）里。和 uploads 是平级的两块，不嵌套。
+      - ${WONTON_APP_DATA}/data:/home/vane/data
+    configs:
+      - source: seed-config
+        target: /seed/seed-config.js
+    network_mode: none
+    restart: "no"
+
+  vane:
+    image: itzcrazykns1337/vane:v1.12.2@sha256:61f2bbf3386ff3df08911fb3de0e1893b04702a4d49ef13fbadbda937b47ab7c
+    # 镜像以 root 启动，再用 sudo 降成 searxng 用户起内置的 SearXNG；写成 PUID 没有 sudo 权限。
+    # 入口要改镜像层里的 SearXNG 设置和 .next 产物，所以不用 read_only；数据目录里的文件也因此归 root。
+    # Docker 把 HOSTNAME 设成容器名，Next 的独立服务器据此绑定；不覆盖时只监听容器 IP，127.0.0.1 连不上。
+    environment:
+      HOSTNAME: "0.0.0.0"
+      # 镜像里的 SearXNG 设置写着一个公开的 secret_key，SearXNG 用它签 session；换成本插件自己的。
+      SEARXNG_SECRET: ${WONTON_SECRET_SEARXNG_SECRET}
+      # 用请求头认用户的出口插件，信任的代理地址只写核心（ADR-0023“只信任核心的地址”）。
+      WONTON_TRUSTED_PROXIES: ${WONTON_CORE_ADDRESS}
+      # 有自己代理设置的 SearXNG 用它，不碰核心注入的 HTTP(S)_PROXY；没配代理时是空串（ADR-0023）。
+      WONTON_PROXY_URL: ${WONTON_PROXY_URL}
+    entrypoint: ["/bin/sh", "/seed/entrypoint.sh"]
+    configs:
+      - source: entrypoint
+        target: /seed/entrypoint.sh
+      - source: patch-search
+        target: /seed/patch-search.cjs
+    volumes:
+      - ${WONTON_APP_DATA}/data:/home/vane/data
+      - ${WONTON_APP_DATA}/uploads:/home/vane/uploads
+      # transformers.js 把本地 embedding 模型下到 node_modules 里的 .cache，放进命名卷，重建容器不用重下。
+      - hf-cache:/home/vane/node_modules/@huggingface/transformers/.cache
+    depends_on:
+      seed-config:
+        condition: service_completed_successfully
+    healthcheck:
+      # API 能返回 provider 说明应用和配置都在，SearXNG 的页面能出来说明内置的搜索引擎起来了。
+      test:
+        - CMD-SHELL
+        - curl -fsS http://127.0.0.1:3000/api/providers | grep -q chatModels && curl -fsS -o /dev/null http://127.0.0.1:8080/
+      interval: 30s
+      timeout: 15s
+      start_period: 90s
+      start_interval: 3s
+      retries: 3
+
+volumes:
+  # 本地 embedding 模型的下载缓存。
+  hf-cache:
+
+configs:
+  seed-config:
+    file: web/seed-config.js
+  entrypoint:
+    file: web/entrypoint.sh
+  patch-search:
+    file: web/patch-search.cjs
+
+x-wonton:
+  spec: "0.4"
+  id: com.github.itzcrazykns.vane
+  version: 0.1.0
+  kind: app
+  title: { zh: Vane, en: Vane }
+  description: { zh: "先搜网页、再由模型总结并标注出处的 AI 搜索", en: "AI search that reads the web first, then answers with cited sources" }
+  icon: icon.png
+  notices: [NOTICE]
+  category: ai
+  screenshots: [screenshots/01-home.png, screenshots/02-searching.png, screenshots/03-answer.png, screenshots/04-answer-end.png, screenshots/05-library.png]
+  author: { name: geraldpeng6, url: https://github.com/geraldpeng6 }
+  homepage: https://github.com/ItzCrazyKns/Vane
+  license: MIT
+  tags: [ai, search, web-search, "搜索", "问答", "引用"]
+  about:
+    zh: |
+      Vane 是一个 AI 搜索和问答引擎：先在内置的 SearXNG 上搜网页，再由模型阅读结果、写出带出处的答案。
+
+      问题可以只搜网页、学术论文或社区讨论，也可以附上文档提问。搜索历史留在本机。
+
+      模型经云吞的模型网关，模型凭据由核心注入，不用自己填 key。相似度排序使用本地多语种 embedding 模型；首次启动需联网下载，加载失败会明确报错并停止启动。搜索中 embedding 出错时本次搜索直接失败并显示原因，不会静默跳过排序。
+    en: |
+      Vane is an AI search and answering engine: it searches the web through the bundled SearXNG, then has a model
+      read the results and write an answer with sources.
+
+      A question can search the web, academic papers or discussions, and you can attach documents to it. Search
+      history stays on the machine.
+
+      Models go through Wonton's model gateway with the credential injected by the core, so no key has to be
+      entered. Ranking uses a local multilingual embedding model downloaded on first startup. If the model
+      cannot load, startup stops with an explicit error. If the embedding fails during a search, that search fails with the reason instead of silently skipping ranking.
+  release_notes: { zh: 第一版。, en: First release. }
+  webui:
+    service: vane
+    port: 3000
+    # Vane 无账号体系，网关会话把关；传头便于以后核对身份。
+    sso: proxy
+    proxy:
+      headers:
+        X-Wonton-User: "{user}"
+  permissions:
+    # 模型只走模型网关。
+    - models
+    # SearXNG 要访问外部的搜索引擎，本地 embedding 模型从 Hugging Face 下载。
+    - network.egress
+  secrets:
+    searxng_secret:
+      generate: { bytes: 32 }
+  requirements:
+    arch: [amd64, arm64]
+    memory: 2G
