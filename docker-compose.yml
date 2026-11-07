@@ -1,8 +1,9 @@
-# Vane：AI 搜索，内置 SearXNG。模型经核心的模型网关。
+# Vane：AI 搜索，内置 SearXNG。模型走核心的模型网关，没接上网关时用户在设置里配自己的 provider。
 #
 # Vane 的配置是一份 data/config.json，应用启动时还会改写它。模型网关的地址和凭据在每次创建容器时都要跟着
-# 注入值走，所以由一次性服务在应用启动前写进数据目录，只补自己的两项（模型和本地 embedding），不动用户加的
-# 其他 provider；配置写坏了、解析不了时安装失败，不静默覆盖。
+# 注入值走，所以由一次性服务在应用启动前写进数据目录，只动自己的 provider（模型和本地 embedding），
+# 不动用户加的其他 provider；没接上网关时摘掉网关的 provider，模型要用户自己配。
+# 配置写坏了、解析不了时安装失败，不静默覆盖。
 services:
   seed-config:
     # 镜像按摘要固定（这里是多架构清单列表的摘要），标签写上游的版本。
@@ -50,10 +51,11 @@ services:
       seed-config:
         condition: service_completed_successfully
     healthcheck:
-      # API 能返回 provider 说明应用和配置都在，SearXNG 的页面能出来说明内置的搜索引擎起来了。
+      # API 能返回 200 说明应用和配置都在，SearXNG 的页面能出来说明内置的搜索引擎起来了。
+      # 不看 provider 列表的内容：模型网关没接上时没有 chat provider，也是健康。
       test:
         - CMD-SHELL
-        - curl -fsS http://127.0.0.1:3000/api/providers | grep -q chatModels && curl -fsS -o /dev/null http://127.0.0.1:8080/
+        - curl -fsS http://127.0.0.1:3000/api/providers && curl -fsS -o /dev/null http://127.0.0.1:8080/
       interval: 30s
       timeout: 15s
       start_period: 90s
@@ -75,7 +77,7 @@ configs:
 x-wonton:
   spec: "0.4"
   id: com.github.itzcrazykns.vane
-  version: 0.1.1
+  version: 0.2.0
   kind: app
   title: { en: Vane }
   description: { zh: 先搜网页再回答，并标出处的 AI 搜索, en: AI search that reads the web first and cites its sources }
@@ -93,11 +95,15 @@ x-wonton:
       先搜网页，再让 AI 读结果、写出带出处的回答。
 
       可以只搜网页、论文或社区讨论，也可以带着文档提问。搜索历史留在这台机器上。
+      模型默认走云吞的模型网关；没接网关时在设置里填自己的服务商和 key 也能用。
     en: |
       It searches the web first, then has the AI read the results and write an answer with sources.
 
       Search the web, papers or discussions only, or attach a document to the question. Search history stays on this machine.
-  release_notes: { zh: 名字和说明更新。, en: Product name and description update. }
+      The model goes through Wonton's model gateway by default; without a gateway, add your own provider and key in settings.
+  release_notes:
+    zh: 模型网关改成可选：没接上网关也能装和用，在设置里配自己的模型服务商；网关装好后自动接上。
+    en: "The model gateway becomes optional: install and use without one by configuring your own provider in settings; it reconnects automatically once a gateway is installed."
   webui:
     service: vane
     port: 3000

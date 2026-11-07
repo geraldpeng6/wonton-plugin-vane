@@ -17,15 +17,15 @@ const fail = (message) => {
   process.exit(1);
 };
 
-const env = (name) => {
-  const value = process.env[name];
-  if (!value) fail(`没有注入 ${name}：插件没申请 models，或者核心的模型网关没就绪`);
-  return value;
-};
+const env = (name) => process.env[name] ?? '';
 
+// 模型网关可选（spec：“models”是“有网关就用”）：没接上时三个变量都是空字符串，
+// 只摘掉网关的 chat provider（按固定 id 找），用户自己加的 provider 和本地 embedding 照旧；
+// 网关装好后核心会重建容器，seed 重跑，网关的 provider 再回来。
 const baseURL = env('WONTON_MODEL_BASE_URL');
 const apiKey = env('WONTON_MODEL_API_KEY');
 const chatModel = env('WONTON_MODEL_DEFAULT');
+const gatewayConnected = Boolean(baseURL && apiKey && chatModel);
 
 const configPath = path.join(process.env.DATA_DIR || '/home/vane/data', 'config.json');
 fs.mkdirSync(path.dirname(configPath), { recursive: true });
@@ -71,11 +71,15 @@ config.search.searxngURL = SEARXNG_URL;
 config.modelProviders = Array.isArray(config.modelProviders) ? config.modelProviders : [];
 
 // Vane 只给 api.openai.com 内置模型列表，自定义地址下列表完全来自这里；embedding 列表为空时搜索拿不到模型。
-const chat = provider(CHAT_PROVIDER_ID, { name: 'Wonton', type: 'openai' });
-chat.type = 'openai';
-chat.config = { ...chat.config, apiKey, baseURL };
-chat.chatModels = Array.isArray(chat.chatModels) ? chat.chatModels : [];
-ensureModel(chat.chatModels, chatModel);
+if (gatewayConnected) {
+  const chat = provider(CHAT_PROVIDER_ID, { name: 'Wonton', type: 'openai' });
+  chat.type = 'openai';
+  chat.config = { ...chat.config, apiKey, baseURL };
+  chat.chatModels = Array.isArray(chat.chatModels) ? chat.chatModels : [];
+  ensureModel(chat.chatModels, chatModel);
+} else {
+  config.modelProviders = config.modelProviders.filter((p) => p.id !== CHAT_PROVIDER_ID);
+}
 
 const embedding = provider(EMBEDDING_PROVIDER_ID, { name: 'Wonton (local)', type: 'transformers' });
 embedding.type = 'transformers';
@@ -90,4 +94,8 @@ ensureModel(embedding.embeddingModels, EMBEDDING_MODEL);
 const tmp = `${configPath}.tmp`;
 fs.writeFileSync(tmp, `${JSON.stringify(config, null, 2)}\n`);
 fs.renameSync(tmp, configPath);
-console.log(`已写入 ${configPath}：模型 ${chatModel}，本地 embedding ${EMBEDDING_MODEL}`);
+console.log(
+  gatewayConnected
+    ? `已写入 ${configPath}：模型 ${chatModel}，本地 embedding ${EMBEDDING_MODEL}`
+    : `已写入 ${configPath}：模型网关没接上，模型要用户在自己的设置里配，本地 embedding ${EMBEDDING_MODEL}`,
+);
