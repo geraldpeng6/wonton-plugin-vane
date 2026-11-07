@@ -1,8 +1,8 @@
 # shellcheck shell=bash
 # scripts/smoke.sh / e2e/smoke.sh 的一项一项探测，跟着插件走。没写的项会 FAIL 并给出写法，不会默认放行。
 #
-# Vane（AI 搜索）：sso=proxy，但应用不读 X-Wonton-User，访问控制由网关完成；清单没有 mcp。
-# 只用套件保证的东西：变量 SMOKE_STATE（数据标记文件，data_write 覆盖写、data_check 读）、SMOKE_JAR、
+# Vane（AI 搜索）：sso=none，应用没有账号体系，访问控制由网关完成；清单没有 mcp。
+# 只用套件保证的东西：变量 SMOKE_STATE（数据标记，data_write 覆盖写、data_check 读）、SMOKE_JAR、
 # SMOKE_WEB_URL、SMOKE_OWNER、SMOKE_BASE、SMOKE_TOKEN、SMOKE_INSTANCE，助手 web_get、dweb。
 export IDENTITY_NA=1
 export SMOKE_NOTE="应用没有用户体系、不读身份头，身份项 N/A"
@@ -26,13 +26,18 @@ vane_env() { # 钩子要用的套件变量
 	done
 }
 
-vane_session() { # 核心会话落在 SMOKE_JAR，并确认网关放行（sso=proxy：网关认 cookie，应用自己不认人）
+vane_state() { # 数据标记的路径：SMOKE_STATE 是文件（e2e harness）就用它，是状态目录（模板 smoke/probes、dev.sh probes）
+	# 就在目录里放一个；两套套件给的同名变量含义不同，按一边写另一边 data_check 会报没数据。
+	if [[ -d "$SMOKE_STATE" ]]; then printf '%s/vane-data.env' "$SMOKE_STATE"; else printf '%s' "$SMOKE_STATE"; fi
+}
+
+vane_session() { # 核心会话落在 SMOKE_JAR，并确认网关放行（sso=none：网关认 cookie，应用自己不认人）
 	local page
 	page="$(dweb --jar "$SMOKE_JAR" --fresh / -L)" || { echo "会话没建立起来：$(head -c 200 <<<"$page")"; return 1; }
 }
 
-data_write() { # 设置页同款接口加一个模型服务商；认它的 id 和名字覆盖写进 SMOKE_STATE
-	local name resp id
+data_write() { # 设置页同款接口加一个模型服务商；认它的 id 和名字覆盖写进数据标记
+	local name resp id state
 	vane_env || return 1
 	name="云吞冒烟 $(date +%Y%m%d%H%M%S)"
 	vane_session || return 1
@@ -43,19 +48,20 @@ data_write() { # 设置页同款接口加一个模型服务商；认它的 id �
 		"$SMOKE_WEB_URL/api/providers")" || { echo "加服务商失败：$resp"; return 1; }
 	id="$(jq -r '.provider.id // empty' <<<"$resp" 2>/dev/null)" || true
 	[[ -n "$id" ]] || { echo "加服务商响应不是预期的 JSON（没有 provider.id）：$(head -c 200 <<<"$resp")"; return 1; }
-	[[ -d "$SMOKE_STATE" ]] && return 0   # 套件 dev.sh probes 里 SMOKE_STATE 是状态目录，不写标记
-	printf 'VANE_PROVIDER_ID=%q\nVANE_PROVIDER_NAME=%q\n' "$id" "$name" >"$SMOKE_STATE" ||
-		{ echo "写不进标记文件 \$SMOKE_STATE"; return 1; }
+	state="$(vane_state)"
+	printf 'VANE_PROVIDER_ID=%q\nVANE_PROVIDER_NAME=%q\n' "$id" "$name" >"$state" ||
+		{ echo "写不进数据标记 $state"; return 1; }
 }
 
 data_check() { # 升级/重装后读回 data_write 加的服务商，名字和配置一字不差
-	local resp got
+	local resp got state
 	vane_env || return 1
-	[[ -f "$SMOKE_STATE" && -s "$SMOKE_STATE" ]] || { echo "标记文件里没有数据：先跑 data_write"; return 1; }
+	state="$(vane_state)"
+	[[ -f "$state" && -s "$state" ]] || { echo "数据标记里没有数据（$state）：先跑 data_write"; return 1; }
 	# shellcheck source=/dev/null
-	. "$SMOKE_STATE"
+	. "$state"
 	[[ -n "${VANE_PROVIDER_ID:-}" && -n "${VANE_PROVIDER_NAME:-}" ]] ||
-		{ echo "标记文件不完整：$SMOKE_STATE"; return 1; }
+		{ echo "数据标记不完整：$state"; return 1; }
 	vane_session || return 1
 	resp="$(curl -sS --noproxy '*' --max-time 120 --fail-with-body -b "$SMOKE_JAR" \
 		"$SMOKE_WEB_URL/api/config")" || { echo "读设置失败"; return 1; }
