@@ -32,8 +32,6 @@ services:
       HOSTNAME: "0.0.0.0"
       # 镜像里的 SearXNG 设置写着一个公开的 secret_key，SearXNG 用它签 session；换成本插件自己的。
       SEARXNG_SECRET: ${WONTON_SECRET_SEARXNG_SECRET}
-      # 用请求头认用户的出口插件，信任的代理地址只写核心（ADR-0023“只信任核心的地址”）。
-      WONTON_TRUSTED_PROXIES: ${WONTON_CORE_ADDRESS}
       # 有自己代理设置的 SearXNG 用它，不碰核心注入的 HTTP(S)_PROXY；没配代理时是空串（ADR-0023）。
       WONTON_PROXY_URL: ${WONTON_PROXY_URL}
     entrypoint: ["/bin/sh", "/seed/entrypoint.sh"]
@@ -107,11 +105,8 @@ x-wonton:
   webui:
     service: vane
     port: 3000
-    # Vane 无账号体系，网关会话把关；传头便于以后核对身份。
-    sso: proxy
-    proxy:
-      headers:
-        X-Wonton-User: "{user}"
+    # Vane 没有账号体系，本来不需要登录（规范：proxy 要应用官方支持代理头认证或固定密钥）；网关照常校验会话。
+    sso: none
   permissions:
     # 模型只走模型网关。
     # Models go through the model gateway only.
