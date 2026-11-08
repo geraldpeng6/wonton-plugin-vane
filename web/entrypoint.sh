@@ -10,7 +10,7 @@ import os, yaml
 path = '/etc/searxng/settings.yml'
 settings = yaml.safe_load(open(path))
 settings.setdefault('server', {})['secret_key'] = os.environ['SEARXNG_SECRET']
-# SearXNG 不读 HTTP(S)_PROXY，用自己被代理设置；地址由核心按 ADR-0023 注入，没配代理时为空，保持直连。
+# SearXNG 不读 HTTP(S)_PROXY，用自己被代理设置；地址由核心注入，没配代理时为空，保持直连。
 proxy = os.environ.get('WONTON_PROXY_URL')
 if proxy:
     settings.setdefault('outgoing', {})['proxies'] = {'all://': proxy}
