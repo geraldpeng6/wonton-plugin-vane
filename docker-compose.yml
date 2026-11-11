@@ -77,8 +77,8 @@ x-wonton:
   id: com.github.itzcrazykns.vane
   version: 0.2.0
   kind: app
-  title: { en: Vane }
-  description: { zh: 先搜网页再回答，并标出处的 AI 搜索, en: AI search that reads the web first and cites its sources }
+  title: { zh: AI 搜索（Vane）, en: AI Search (Vane) }
+  description: { zh: 会先查资料再回答的 AI：每个问题都先上网搜，再写出标明出处的回答，适合查新闻、找资料。, en: "An AI that searches before it answers: every question goes to the web first, and the answer comes back with its sources. Good for news and research." }
   icon: icon.png
   notices: [NOTICE]
   screenshots: [screenshots/01-home.png, screenshots/02-searching.png, screenshots/03-answer.png, screenshots/04-answer-end.png, screenshots/05-library.png]
