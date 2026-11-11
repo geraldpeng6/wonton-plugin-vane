@@ -1,6 +1,6 @@
 # 云吞插件：Vane
 
-开发流程见[插件开发指南](https://github.com/geraldpeng6/wonton-docs/blob/main/develop.md)。
+开发流程见[插件开发指南](https://github.com/wontonapp/wonton-docs/blob/main/develop.md)。
 
 Vane 的云吞插件：先搜网页，再由模型总结并标注出处。应用没有自己的用户体系，也不读身份头，访问控制由核心网关完成；
 网页始终在网关登录后面。冷启动要从 Hugging Face 拉模型，容器要能出网（冒烟时配 `WONTON_DEV_EGRESS_PROXY`）。
